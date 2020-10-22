@@ -348,4 +348,6 @@ MigrationBackup/
 
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
+
 /VictorBotML.Model/MLModel.zip
+/VictorBot/token.txt

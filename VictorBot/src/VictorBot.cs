@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NhentaiApi;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -27,7 +28,7 @@ namespace VictorBot
 
                 serviceProvider.GetRequiredService<CommandService>().Log += LogAsync;
 
-                await client.LoginAsync(TokenType.Bot, "MzQ2MzIwNTMyNjI0NjM3OTUy.WZB2IQ.nWLrADjtbXIKdOu2oewfxyUuHiI");
+                await client.LoginAsync(TokenType.Bot, await new StreamReader("..\\..\\token.txt").ReadToEndAsync());
                 await client.StartAsync();
 
                 await serviceProvider.GetRequiredService<CommandHandler>().InitializeAsync();
