@@ -19,11 +19,11 @@ namespace NhentaiApi
         private const string thumbnailCdn = "https://t.nhentai.net";
         private const string imageCdn = "https://i.nhentai.net";
 
-        HttpClient httpClient;
+        private readonly HttpClient _httpClient;
 
-        public NhentaiClient()
+        public NhentaiClient(HttpClient httpClient)
         {
-            httpClient = new HttpClient();
+            _httpClient = httpClient;
         }
 
         public async Task<NhentaiGallery> GetGalleryAsync(string galleryId)
@@ -32,37 +32,34 @@ namespace NhentaiApi
 
             try
             {
-                jsonString = await httpClient.GetStringAsync(nhBase + $"/api/gallery/{galleryId}");
+                jsonString = await _httpClient.GetStringAsync(nhBase + $"/api/gallery/{galleryId}");
             }
             catch (HttpRequestException) { }
 
-            return await Task.Run(() => JsonConvert.DeserializeObject<NhentaiGallery>(jsonString));
+            return JsonConvert.DeserializeObject<NhentaiGallery>(jsonString);
         }
 
         public async Task<NhentaiGallery> GetRandomGalleryAsync()
         {
             var gallery = new NhentaiGallery();
 
-            await Task.Run(() =>
+            var htmlString = "";
+
+            try
             {
-                var htmlString = "";
+                htmlString = await _httpClient.GetStringAsync("https://nhentai.net/random");
+            }
+            catch (HttpRequestException) { }
 
-                try
-                {
-                    htmlString = httpClient.GetStringAsync("https://nhentai.net/random").Result;
-                }
-                catch (HttpRequestException) { }
+            var beginIndex = htmlString.LastIndexOf("JSON.parse(\"");
+            var pass1 = htmlString.Substring(beginIndex, htmlString.Length - beginIndex);
+            var endIndex = pass1.LastIndexOf("\");");
+            var pass2 = pass1.Substring(0, endIndex);
 
-                var beginIndex = htmlString.LastIndexOf("JSON.parse(\"");
-                var pass1 = htmlString.Substring(beginIndex, htmlString.Length - beginIndex);
-                var endIndex = pass1.LastIndexOf("\");");
-                var pass2 = pass1.Substring(0, endIndex);
+            var escaped = Regex.Unescape(pass2);
+            var jsonString = escaped.Substring(12, escaped.Length - 12);
 
-                var escaped = Regex.Unescape(pass2);
-                var jsonString = escaped.Substring(12, escaped.Length - 12);
-
-                gallery = JsonConvert.DeserializeObject<NhentaiGallery>(jsonString);
-            });
+            gallery = JsonConvert.DeserializeObject<NhentaiGallery>(jsonString);
 
             return gallery;
         }
@@ -76,7 +73,7 @@ namespace NhentaiApi
             {
                 var random = new Random();
 
-                var jsonString = await httpClient.GetStringAsync(nhBase + $"/api/galleries/search?query={query}");
+                var jsonString = await _httpClient.GetStringAsync(nhBase + $"/api/galleries/search?query={query}");
                 result = JsonConvert.DeserializeObject<NhentaiSearchResult>(jsonString);
 
                 int randomPage = 0;
@@ -84,7 +81,7 @@ namespace NhentaiApi
                 {
                     randomPage = random.Next(1, result.Num_Pages);
 
-                    jsonString = await httpClient.GetStringAsync(nhBase + $"/api/galleries/search?query={query}&page={randomPage}");
+                    jsonString = await _httpClient.GetStringAsync(nhBase + $"/api/galleries/search?query={query}&page={randomPage}");
                     result = JsonConvert.DeserializeObject<NhentaiSearchResult>(jsonString);
 
                     randomIndex = random.Next(0, result.Result.Length - 1);
@@ -96,18 +93,15 @@ namespace NhentaiApi
             return result.Result[randomIndex];
         }
 
-        public async Task<string> GetImageUrlAsync(NhentaiGallery gallery, NhImageType imageType, int page = 1)
+        public string GetImageUrl(NhentaiGallery gallery, NhImageType imageType, int page = 1)
         {
-            return await Task.Run(() =>
-            {
-                if (imageType == NhImageType.Cover)
-                    return $"{thumbnailCdn}/galleries/{gallery.Media_Id}/cover.{gallery.Images.Cover.ImageFormat}";
-                else
-                    return $"{imageCdn}/galleries/{gallery.Media_Id}/{page}.{gallery.Images.Pages[page - 1].ImageFormat}";
-            });
+            if (imageType == NhImageType.Cover)
+                return $"{thumbnailCdn}/galleries/{gallery.Media_Id}/cover.{gallery.Images.Cover.ImageFormat}";
+            else
+                return $"{imageCdn}/galleries/{gallery.Media_Id}/{page}.{gallery.Images.Pages[page - 1].ImageFormat}";
         }
 
-        public async Task<Embed> GetGalleryEmbedAsync(NhentaiGallery gallery, SocketUser user)
+        public Embed GetGalleryEmbed(NhentaiGallery gallery, SocketUser user)
         {
             EmbedBuilder galleryEmbedBuilder;
 
@@ -179,7 +173,7 @@ namespace NhentaiApi
                     Title = $"[{gallery.Id}] {gallery.Title.Pretty}",
                     Url = $"http://nhentai.net/g/{gallery.Id}",
                     Fields = fields,
-                    ImageUrl = await GetImageUrlAsync(gallery, NhImageType.Cover),
+                    ImageUrl = GetImageUrl(gallery, NhImageType.Cover),
                     Footer = new EmbedFooterBuilder() { Text = $"{gallery.Num_Pages} pages" }
                 };
             }

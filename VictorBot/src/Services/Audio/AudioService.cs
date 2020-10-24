@@ -20,6 +20,8 @@ using YoutubeExplode.Videos;
 using TagLib;
 using System.Timers;
 using Timer = System.Threading.Timer;
+using CSCore.Codecs.WAV;
+using Discord.Audio.Streams;
 
 namespace VictorBot.Services
 {
@@ -32,86 +34,100 @@ namespace VictorBot.Services
             Timers = new Dictionary<ulong, Timer>();
         }
 
-        public async Task<Track> CreateTrackFromFileAsync(string path)
+        public Track CreateTrackFromFile(string path)
         {
-            return await Task.Run(() =>
+            var taglib = TagLib.File.Create(path);
+
+            string title = taglib.Tag.Title;
+            string artist = taglib.Tag.Performers[0];
+            string album = taglib.Tag.Album;
+            byte[] image = null;
+
+            if (taglib.Tag.Pictures.Length > 0) image = taglib.Tag.Pictures[0].Data.ToArray();
+
+            return new Track(
+                new DmoDistortionEffect(CodecFactory.Instance.GetCodec(path).ChangeSampleRate(48000))
+                {
+                    IsEnabled = false,
+                },
+                title,
+                artist,
+                album,
+                image);
+        }
+
+        public Track CreateTrackFromYouTubeStream(Video video, IStreamInfo streamInfo)
+        {
+            return new Track(
+                new DmoDistortionEffect(CodecFactory.Instance.GetCodec(new Uri(streamInfo.Url)).ChangeSampleRate(48000))
+                {
+                    IsEnabled = false,
+                    //Gain = 0.0f,
+                    //PostEQBandwidth = 7200,
+                    //PostEQCenterFrequency = 4800
+                },
+                video.Title,
+                video.Author);
+        }
+
+        public Task PlayPauseAsync(SocketCommandContext context)
+        {
+            if (IsInVoiceChannel(context))
             {
-                string title = "Untitled";
-                string artist = "Unknown Artist";
-                string album = "Unknown Album";
-                byte[] image = null;
-
-                var taglib = TagLib.File.Create(path);
-
-                title = taglib.Tag.Title;
-                artist = taglib.Tag.Performers[0];
-                album = taglib.Tag.Album;
-
-                if (taglib.Tag.Pictures.Length > 0) image = taglib.Tag.Pictures[0].Data.ToArray();
-
-                return new Track(
-                    new DmoDistortionEffect(CodecFactory.Instance.GetCodec(path).ChangeSampleRate(48000))
-                    {
-                        IsEnabled = false,
-                    },
-                    title,
-                    artist,
-                    album,
-                    image);
-            });
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].PlayPause();
+            }
+            return Task.CompletedTask;
         }
 
-        public async Task<Track> CreateTrackFromYouTubeStreamAsync(Video video, IStreamInfo streamInfo)
+        public Task StopAsync(SocketCommandContext context)
         {
-            return await Task.Run(() =>
+            if (IsInVoiceChannel(context))
             {
-                return new Track(
-                    new DmoDistortionEffect(CodecFactory.Instance.GetCodec(new Uri(streamInfo.Url)).ChangeSampleRate(48000))
-                    {
-                        IsEnabled = false,
-                        //Gain = 0.0f,
-                        //PostEQBandwidth = 7200,
-                        //PostEQCenterFrequency = 4800
-                    },
-                    video.Title,
-                    video.Author);
-            });
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].Stop();
+            }
+            return Task.CompletedTask;
         }
 
-        public async Task PlayPauseAsync(SocketCommandContext context)
+        public Task LoopAsync(SocketCommandContext context)
         {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].PlayPause(); });
+            if (IsInVoiceChannel(context))
+            {
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].Loop = !Players[voiceChannelId].Loop;
+            }
+            return Task.CompletedTask;
         }
 
-        public async Task StopAsync(SocketCommandContext context)
+        public Task SkipAsync(SocketCommandContext context)
         {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].Stop(); });
+            if (IsInVoiceChannel(context))
+            {
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].Skip();
+            }
+            return Task.CompletedTask;
         }
 
-        public async Task LoopAsync(SocketCommandContext context)
+        public Task EarRapeAsync(SocketCommandContext context)
         {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].Loop(); });
+            if (IsInVoiceChannel(context))
+            {
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].EarRape();
+            }
+            return Task.CompletedTask;
         }
 
-        public async Task SkipAsync(SocketCommandContext context)
+        public Task SetEarRapeParamsAsync(SocketCommandContext context, string paramsString)
         {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].Skip(); });
-        }
-
-        public async Task EarRapeAsync(SocketCommandContext context)
-        {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].EarRape(); });
-        }
-
-        public async Task SetEarRapeParamsAsync(SocketCommandContext context, string paramsString)
-        {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            await Task.Run(() => { Players[voiceChannelId].SetEarRapeParams(paramsString); });
+            if (IsInVoiceChannel(context))
+            {
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].SetEarRapeParams(paramsString);
+            }
+            return Task.CompletedTask;
         }
 
         public async Task<ulong> JoinVoiceChannelAsync(SocketCommandContext context)
@@ -133,10 +149,27 @@ namespace VictorBot.Services
                 };
 
                 AudioClients.Add(voiceChannelId, audioClient);
-                Timers.Add(voiceChannelId, new Timer(CheckPlaying, voiceChannelId, Timeout.Infinite, Timeout.Infinite));
+
+                if (!Timers.ContainsKey(voiceChannelId))
+                    Timers.Add(voiceChannelId, new Timer(CheckPlaying, voiceChannelId, Timeout.Infinite, Timeout.Infinite));
             }
 
             return voiceChannelId;
+        }
+
+        public bool IsInVoiceChannel(SocketCommandContext context)
+        {
+            var userVoiceChannel = ((IGuildUser)context.User).VoiceChannel;
+            if (userVoiceChannel == null) return false;
+
+            var voiceChannelId = userVoiceChannel.Id;
+
+            if (!AudioClients.ContainsKey(voiceChannelId))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         private void CheckPlaying(object state)
@@ -158,14 +191,16 @@ namespace VictorBot.Services
             var audioClient = AudioClients[voiceChannelId];
             var timer = Timers[voiceChannelId];
 
-            var waveSource = await CreateTrackFromFileAsync(path);
+            var track = CreateTrackFromFile(path);
 
             if (!Players.ContainsKey(voiceChannelId))
             {
                 Console.WriteLine("PlayFileAsync: Playing file...");
 
-                using (var pcmStream = audioClient.CreatePCMStream(AudioApplication.Mixed, 128 * 1024, 500))
+                //using (var pcmStream = audioClient.CreateOpusStream())
+                using (var pcmStream = audioClient.CreatePCMStream(AudioApplication.Mixed, 128 * 1024, 16, 100))
                 {
+                    //Players.Add(voiceChannelId, new AudioPlayer(new OpusEncodeStream(pcmStream, 128 * 1024, AudioApplication.Music, 100)));
                     Players.Add(voiceChannelId, new AudioPlayer(pcmStream));
 
                     using (var player = Players[voiceChannelId])
@@ -183,8 +218,8 @@ namespace VictorBot.Services
                         };
 
                         await audioClient.SetSpeakingAsync(true);
-                        player.Enqueue(waveSource);
-                        await player.BeginPlayAsync();
+                        player.Enqueue(track);
+                        await player.BeginPlay();
                         await audioClient.SetSpeakingAsync(false);
                     }
 
@@ -197,7 +232,7 @@ namespace VictorBot.Services
             {
                 Console.WriteLine("PlayFileAsync: Queuing file...");
 
-                Players[voiceChannelId].Enqueue(waveSource);
+                Players[voiceChannelId].Enqueue(track);
             }
 
             Console.WriteLine("PlayFileAsync: Done.");
@@ -208,7 +243,7 @@ namespace VictorBot.Services
             var voiceChannelId = await JoinVoiceChannelAsync(context);
             var audioClient = AudioClients[voiceChannelId];
 
-            var waveSource = await CreateTrackFromYouTubeStreamAsync(video, streamInfo);
+            var waveSource = CreateTrackFromYouTubeStream(video, streamInfo);
 
             if (!Players.ContainsKey(voiceChannelId))
             {
@@ -220,7 +255,7 @@ namespace VictorBot.Services
                     {
                         await audioClient.SetSpeakingAsync(true);
                         audioPlayer.Enqueue(waveSource);
-                        await audioPlayer.BeginPlayAsync();
+                        await audioPlayer.BeginPlay();
                         await audioClient.SetSpeakingAsync(false);
                     }
                 }

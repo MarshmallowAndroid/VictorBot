@@ -3,7 +3,6 @@ using Discord.Audio;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using NAudio.CoreAudioApi;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -2,7 +2,10 @@
 
 namespace GelbooruApi
 {
-    public partial class GelbooruPost
+    /// <summary>
+    /// XML serialization class for a single Gelbooru post
+    /// </summary>
+    public class GelbooruPost
     {
         [XmlAttribute()]
         public string height { get; set; }

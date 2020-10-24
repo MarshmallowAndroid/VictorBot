@@ -1,7 +1,6 @@
 ﻿using Discord;
 using Discord.Audio;
 using Discord.Commands;
-using NAudio.Wave;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -28,8 +27,6 @@ namespace VictorBot.Modules
         [Alias("lp", "lplay")]
         public async Task PlayAsync(string path)
         {
-            //var channelId = await JoinVoiceChannelAsync();
-
             await AudioService.PlayFileAsync(path, Context);
         }
 

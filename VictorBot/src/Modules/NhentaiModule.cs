@@ -38,21 +38,21 @@ namespace VictorBot.Modules
             {
                 if (query != string.Empty)
                 {
-                    await ReplyAsync(embed: await NhClient.GetGalleryEmbedAsync(await NhClient.GetRandomResultAsync(query), Context.User)); 
+                    await ReplyAsync(embed: NhClient.GetGalleryEmbed(await NhClient.GetRandomResultAsync(query), Context.User)); 
                 }
                 else
                 {
                     await ReplyAsync("Retrieving random doujin...");
-                    await ReplyAsync(embed: await NhClient.GetGalleryEmbedAsync(await NhClient.GetRandomGalleryAsync(), Context.User));
+                    await ReplyAsync(embed: NhClient.GetGalleryEmbed(await NhClient.GetRandomGalleryAsync(), Context.User));
                 }
             }
             else
             {
                 if (page == 0)
-                    await ReplyAsync(embed: await NhClient.GetGalleryEmbedAsync(await NhClient.GetGalleryAsync(galleryId.ToString()), Context.User));
+                    await ReplyAsync(embed: NhClient.GetGalleryEmbed(await NhClient.GetGalleryAsync(galleryId.ToString()), Context.User));
                 else
                     await ReplyAsync(
-                        await NhClient.GetImageUrlAsync(
+                        NhClient.GetImageUrl(
                             await NhClient.GetGalleryAsync(galleryId.ToString()), NhentaiClient.NhImageType.Page, page));
             }
         }

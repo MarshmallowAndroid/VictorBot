@@ -15,14 +15,10 @@ namespace VictorBot.Services.Audio
     public class AudioPlayer : IDisposable
     {
         private IWaveSource currentSource;
-        private readonly Queue<Track> queue;
-        private readonly Stream destinationStream;
-
-        private readonly object lockObject = new object();
+        private readonly Stream _destinationStream;
 
         private bool playing = false;
         private bool paused = false;
-        private bool loop = false;
         private bool stopRequested = false;
         private bool skipRequested = false;
 
@@ -36,10 +32,14 @@ namespace VictorBot.Services.Audio
 
         public AudioPlayer(Stream destinationStream)
         {
-            queue = new Queue<Track>();
+            AudioQueue = new Queue<Track>();
 
-            this.destinationStream = destinationStream;
+            _destinationStream = destinationStream;
         }
+
+        public bool Loop { get; set; }
+
+        public Queue<Track> AudioQueue { get; }
 
         public void Enqueue(Track track)
         {
@@ -63,139 +63,120 @@ namespace VictorBot.Services.Audio
             TrackQueuedEventArgs eventArgs = new TrackQueuedEventArgs(track);
             OnTrackQueued(eventArgs);
 
-            queue.Enqueue(track);
+            AudioQueue.Enqueue(track);
 
-            if (!playing) currentSource = queue.Dequeue().WaveSource;
+            if (!playing) currentSource = AudioQueue.Dequeue().WaveSource;
         }
 
         public void SetEarRapeParams(string paramsString)
         {
-            lock (lockObject)
-            {
-                string[] splitString = paramsString.Split(' ');
+            string[] splitString = paramsString.Split(' ');
 
-                var distortion = currentSource as DmoDistortionEffect;
+            var distortion = currentSource as DmoDistortionEffect;
 
-                distortion.Edge = float.Parse(splitString[0]);
-                distortion.Gain = int.Parse(splitString[1]);
-                distortion.PostEQBandwidth = int.Parse(splitString[2]);
-                distortion.PostEQCenterFrequency = int.Parse(splitString[3]);
-                distortion.PreLowpassCutoff = int.Parse(splitString[4]);
-            }
+            distortion.Edge = float.Parse(splitString[0]);
+            distortion.Gain = int.Parse(splitString[1]);
+            distortion.PostEQBandwidth = int.Parse(splitString[2]);
+            distortion.PostEQCenterFrequency = int.Parse(splitString[3]);
+            distortion.PreLowpassCutoff = int.Parse(splitString[4]);
         }
 
         public void EarRape()
         {
-            lock (lockObject)
-            {
-                var distortion = currentSource as DmoDistortionEffect;
-                distortion.IsEnabled = !distortion.IsEnabled;
-            }
+            var distortion = currentSource as DmoDistortionEffect;
+            distortion.IsEnabled = !distortion.IsEnabled;
         }
 
         public void PlayPause()
         {
-            lock (lockObject) paused = !paused;
+            paused = !paused;
         }
 
         public void Stop()
         {
-            lock (lockObject) stopRequested = true;
-        }
-
-        public void Loop()
-        {
-            lock (lockObject) loop = !loop;
+            stopRequested = true;
         }
 
         public void Skip()
         {
-            lock (lockObject) skipRequested = true;
+            skipRequested = true;
         }
 
-        public Queue<Track> AudioQueue
+        public Task BeginPlay(int bufferSize = 81920)
         {
-            get { lock (lockObject) { return queue; } }
-        }
+            byte[] buffer = new byte[bufferSize];
 
-        public async Task BeginPlayAsync(int bufferSize = 81920)
-        {
-            await Task.Run(() =>
+            while (true)
             {
-                byte[] buffer = new byte[bufferSize];
-                int readBytes = 0;
-
-                while (true)
+                if (stopRequested)
                 {
-                    if (stopRequested)
-                    {
-                        Dispose();
+                    Dispose();
 
-                        stopRequested = false;
-                        break;
-                    }
-
-                    if (skipRequested)
-                    {
-                        skipRequested = false;
-
-                        if (queue.Count > 0)
-                        {
-                            TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Skipped, queue.Peek());
-                            OnTrackChanged(eventArgs);
-
-                            currentSource = queue.Dequeue().WaveSource;
-                        }
-                        else break;
-                    }
-
-                    if (!paused)
-                    {
-                        try
-                        {
-                            readBytes = currentSource.Read(buffer, 0, buffer.Length);
-
-                            if (readBytes > 0)
-                            {
-                                destinationStream.Write(buffer, 0, buffer.Length);
-
-                                Console.WriteLine("Position: " + currentSource.Position + ", Length: " + currentSource.Length);
-
-                                playing = true;
-                            }
-                            else
-                            {
-                                if (loop)
-                                {
-                                    currentSource.Position = 0;
-                                }
-                                else if (queue.Count > 0)
-                                {
-                                    TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Ended, queue.Peek());
-                                    OnTrackChanged(eventArgs);
-
-                                    currentSource.Dispose();
-                                    currentSource = queue.Dequeue().WaveSource;
-                                }
-                                else break;
-                            }
-                        }
-                        catch (Exception)
-                        {
-                            playing = false;
-                        }
-                    }
-
+                    stopRequested = false;
+                    break;
                 }
 
-                playing = false;
-            });
+                if (skipRequested)
+                {
+                    skipRequested = false;
+
+                    if (AudioQueue.Count > 0)
+                    {
+                        TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek());
+                        OnTrackChanged(eventArgs);
+
+                        currentSource = AudioQueue.Dequeue().WaveSource;
+                    }
+                    else break;
+                }
+
+                if (!paused)
+                {
+                    try
+                    {
+                        int readBytes = currentSource.Read(buffer, 0, buffer.Length);
+                        if (readBytes > 0)
+                        {
+                            _destinationStream.Write(buffer, 0, buffer.Length);
+
+                            Console.WriteLine("Position: " + currentSource.Position + ", Length: " + currentSource.Length);
+
+                            playing = true;
+                        }
+                        else
+                        {
+                            if (Loop)
+                            {
+                                currentSource.Position = 0;
+                            }
+                            else if (AudioQueue.Count > 0)
+                            {
+                                TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek());
+                                OnTrackChanged(eventArgs);
+
+                                currentSource.Dispose();
+                                currentSource = AudioQueue.Dequeue().WaveSource;
+                            }
+                            else break;
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        playing = false;
+                    }
+                }
+
+            }
+
+            playing = false;
+
+            return Task.CompletedTask;
         }
 
         public void Dispose()
         {
             currentSource?.Dispose();
-            queue.Clear();
+            AudioQueue.Clear();
         }
 
         protected virtual void OnTrackChanged(TrackChangedEventArgs e) => TrackChanged?.Invoke(this, e);

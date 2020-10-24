@@ -4,6 +4,7 @@ using Discord.WebSocket;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -15,41 +16,41 @@ using VictorBot.GelbooruApi;
 
 namespace GelbooruApi
 {
+    /// <summary>
+    /// Client for interacting with the Gelbooru API
+    /// </summary>
     public class GelbooruClient
     {
         private const string baseUrl = "https://gelbooru.com";
 
-        HttpClient httpClient;
+        private readonly HttpClient _httpClient;
 
-        public GelbooruClient()
+        public GelbooruClient(HttpClient httpClient)
         {
-            httpClient = new HttpClient();
+            _httpClient = httpClient;
         }
 
-        public async Task<Embed> GenerateEmbedAsync(GelbooruPost post, uint postCount, SocketUser user)
+        public Embed GenerateEmbed(GelbooruPost post, uint postCount, SocketUser user)
         {
-            var postEmbed = new EmbedBuilder();
+            EmbedBuilder postEmbed;
 
             if (post != null)
             {
-                await Task.Run(() =>
+                string formattedTags = "`" + post.tags.TrimStart().TrimEnd().Replace(" ", "` `") + "`";
+                string finalTags;
+                if (formattedTags.Length > 1024) finalTags = formattedTags.Substring(0, 1020) + "`...";
+                else finalTags = formattedTags;
+
+                postEmbed = new EmbedBuilder()
                 {
-                    string formattedTags = "`" + post.tags.TrimStart().TrimEnd().Replace(" ", "` `") + "`";
-                    string finalTags = "";
-
-                    if (formattedTags.Length > 1024) finalTags = formattedTags.Substring(0, 1020) + "`...";
-                    else finalTags = formattedTags;
-
-                    postEmbed = new EmbedBuilder()
+                    Author = new EmbedAuthorBuilder()
                     {
-                        Author = new EmbedAuthorBuilder()
-                        {
-                            IconUrl = user.GetAvatarUrl(),
-                            Name = $"Requested by {user.Username}"
-                        },
-                        Title = $"{post.id}",
-                        Url = $"https://gelbooru.com/index.php?page=post&s=view&id={post.id}",
-                        Fields = new List<EmbedFieldBuilder>()
+                        IconUrl = user.GetAvatarUrl(),
+                        Name = $"Requested by {user.Username}"
+                    },
+                    Title = $"{post.id}",
+                    Url = $"https://gelbooru.com/index.php?page=post&s=view&id={post.id}",
+                    Fields = new List<EmbedFieldBuilder>()
                         {
                             new EmbedFieldBuilder()
                             {
@@ -57,13 +58,12 @@ namespace GelbooruApi
                                 Value = finalTags
                             }
                         },
-                        ImageUrl = post.sample_url ?? post.preview_url,
-                        Footer = new EmbedFooterBuilder()
-                        {
-                            Text = $"{postCount} results"
-                        }
-                    };
-                });
+                    ImageUrl = post.sample_url ?? post.preview_url,
+                    Footer = new EmbedFooterBuilder()
+                    {
+                        Text = $"{postCount} results"
+                    }
+                };
             }
             else
             {
@@ -81,70 +81,61 @@ namespace GelbooruApi
             return postEmbed.Build();
         }
 
-        public async Task<GelbooruPost> GetPostAsync(GelbooruPosts posts)
+        public GelbooruPost GetRandomPost(GelbooruPosts posts)
         {
-            return await Task.Run(() =>
-            {
-                var random = new Random();
+            var random = new Random();
 
-                if (posts.Count > 0)
-                {
-                    var randomIndex = random.Next(0, posts.Posts.Length);
-                    return posts.Posts[randomIndex];
-                }
-                else return null;
-            });
+            if (posts.Count > 0)
+            {
+                var randomIndex = random.Next(0, posts.Posts.Length);
+                return posts.Posts[randomIndex];
+            }
+            else return null;
         }
 
         public async Task<GelbooruPosts> GetPostsAsync(string tags, int page = 0)
         {
             var serializer = new XmlSerializer(typeof(GelbooruPosts));
-            var xmlString = await httpClient.GetStringAsync(baseUrl + $"/index.php?page=dapi&s=post&q=index&tags={tags}&pid={page}");
+            var xmlString = await _httpClient.GetStringAsync(baseUrl + $"/index.php?page=dapi&s=post&q=index&tags={tags}&pid={page}");
             var postList = (GelbooruPosts)serializer.Deserialize(new StringReader(xmlString));
 
             return postList;
         }
 
-        public async Task<string> GetLastTagAsync(SocketCommandContext context)
+        public string GetLastTag(SocketCommandContext context)
         {
-            return await Task.Run(() =>
+            var configDirectory = ".\\config";
+            var configFile = configDirectory + "\\gelbooru_config.json";
+
+            GelbooruConfig gelbooruConfig;
+
+            if (!Directory.Exists(configDirectory)) return "";
+            if (!File.Exists(configFile)) return "";
+
+            using (var reader = new StreamReader(configFile))
             {
-                var configDirectory = ".\\config";
-                var configFile = configDirectory + "\\gelbooru_config.json";
+                gelbooruConfig = JsonConvert.DeserializeObject<GelbooruConfig>(reader.ReadToEnd());
+            }
 
-                GelbooruConfig gelbooruConfig;
+            if (gelbooruConfig == null) return "";
 
-                if (!Directory.Exists(configDirectory)) return "";
-                if (!File.Exists(configFile)) return "";
+            var userId = context.User.Id;
+            var messageChannelId = context.Channel.Id;
 
-                using (var reader = new StreamReader(configFile))
-                {
-                    gelbooruConfig = JsonConvert.DeserializeObject<GelbooruConfig>(reader.ReadToEnd());
-                }
+            var users = gelbooruConfig.UserConfigs;
 
-                if (gelbooruConfig == null) return "";
+            if (users.ContainsKey(context.User.Id))
+            {
+                var userTags = users[userId].MessageChannelTags;
 
-                var users = gelbooruConfig.UserConfigs;
-                var user = users?.FirstOrDefault(x => x.UserId == context.User.Id);
-                var guilds = user?.GuildConfigs;
-                var guild = guilds?.FirstOrDefault(x => x.GuildId == context.Guild.Id);
-                var channels = guild?.ChannelConfigs;
-                var channel = channels?.FirstOrDefault(x => x.ChannelId == context.Channel.Id);
+                if (userTags.ContainsKey(messageChannelId))
+                    return userTags[messageChannelId];
+            }
 
-                if (users == null) return "";
-                if (user == null) return "";
-
-                if (guilds == null) return "";
-                if (guild == null) return "";
-
-                if (channels == null) return "";
-                if (channel == null) return "";
-
-                return channel.LastGelbooruTags;
-            });
+            return "";
         }
 
-        public void UpdateLastTagAsync(SocketCommandContext context, string tags = "")
+        public Task UpdateLastTagAsync(SocketCommandContext context, string tags = "")
         {
             var configDirectory = ".\\config";
             var configFile = configDirectory + "\\gelbooru_config.json";
@@ -159,59 +150,43 @@ namespace GelbooruApi
                 gelbooruConfig = JsonConvert.DeserializeObject<GelbooruConfig>(reader.ReadToEnd());
             }
 
-            if (gelbooruConfig == null) gelbooruConfig = new GelbooruConfig();
+            if (gelbooruConfig == null)
+            {
+                gelbooruConfig = new GelbooruConfig
+                {
+                    UserConfigs = new Dictionary<ulong, UserConfig>()
+                };
+            }
+
+            var userId = context.User.Id;
+            var messageChannelId = context.Channel.Id;
 
             var users = gelbooruConfig.UserConfigs;
-            var user = users?.FirstOrDefault(x => x.UserId == context.User.Id);
-            var guilds = user?.GuildConfigs;
-            var guild = guilds?.FirstOrDefault(x => x.GuildId == context.Guild.Id);
-            var channels = guild?.ChannelConfigs;
-            var channel = channels?.FirstOrDefault(x => x.ChannelId == context.Channel.Id);
-
-            if (users == null)
+            if (!users.ContainsKey(userId))
             {
-                users = new List<UserConfig>();
-                gelbooruConfig.UserConfigs = users;
-            }
-            if (user == null)
-            {
-                user = new UserConfig() { UserId = context.User.Id };
-                users.Add(user);
+                users.Add(userId, new UserConfig() { MessageChannelTags = new Dictionary<ulong, string>() });
             }
 
-            if (guilds == null)
-            {
-                guilds = new List<GuildConfig>();
-                user.GuildConfigs = guilds;
-            }
-            if (guild == null)
-            {
-                guild = new GuildConfig() { GuildId = context.Guild.Id };
-                user.GuildConfigs.Add(guild);
-            }
+            var userTags = users[userId].MessageChannelTags;
 
-            if (channels == null)
+            if (userTags.ContainsKey(messageChannelId))
+                userTags[messageChannelId] = tags;
+            else
             {
-                channels = new List<ChannelConfig>();
-                guild.ChannelConfigs = channels;
+                userTags.Add(messageChannelId, tags);
             }
-            if (channel == null)
-            {
-                channel = new ChannelConfig() { ChannelId = context.Channel.Id };
-                guild.ChannelConfigs.Add(channel);
-            }
-
-            channel.LastGelbooruTags = tags;
 
             using (var writer = new StreamWriter(configFile))
             {
                 writer.Write(JsonConvert.SerializeObject(gelbooruConfig));
             }
+
+            return Task.CompletedTask;
         }
 
         public async Task<string> GetJsonAsync(string url)
         {
-            var jsonString = await httpClient.GetStringAsync(baseUrl + url);
+            var jsonString = await _httpClient.GetStringAsync(baseUrl + url);
 
             using (var writer = File.CreateText("test"))
             {

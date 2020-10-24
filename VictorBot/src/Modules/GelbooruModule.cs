@@ -18,31 +18,26 @@ namespace VictorBot.Modules
         [Command]
         public async Task RepeatTag()
         {
-            var tags = await GelbooruClient.GetLastTagAsync(Context);
+            var tags = GelbooruClient.GetLastTag(Context);
             var posts = await GelbooruClient.GetPostsAsync(tags);
-            var post = await GelbooruClient.GetPostAsync(posts);
+            var post = GelbooruClient.GetRandomPost(posts);
 
-            await ReplyAsync(embed: await GelbooruClient.GenerateEmbedAsync(post, posts.Count, Context.User));
+            await ReplyAsync(embed: GelbooruClient.GenerateEmbed(post, posts.Count, Context.User));
         }
 
         [Command("tags")]
         public async Task GetImageFromTagAsync(string tags = "", int page = 0)
         {
-            GelbooruClient.UpdateLastTagAsync(Context, tags);
-
             var posts = await GelbooruClient.GetPostsAsync(tags);
-            var post = await GelbooruClient.GetPostAsync(posts);
+            var post = GelbooruClient.GetRandomPost(posts);
 
-            await ReplyAsync(embed: await GelbooruClient.GenerateEmbedAsync(post, posts.Count, Context.User));
+            await ReplyAsync(embed: GelbooruClient.GenerateEmbed(post, posts.Count, Context.User));
+
+            await GelbooruClient.UpdateLastTagAsync(Context, tags);
         }
 
         [Command("lasttag")]
         [Alias("lt")]
-        public async Task ReplyLastTagAsync()
-        {
-            var tags = await GelbooruClient.GetLastTagAsync(Context);
-
-            await ReplyAsync(tags);
-        }
+        public async Task ReplyLastTagAsync() => await ReplyAsync(GelbooruClient.GetLastTag(Context));
     }
 }
