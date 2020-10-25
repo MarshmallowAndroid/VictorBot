@@ -8,9 +8,9 @@ namespace VictorBot.Services
     {
         public Track(
             IWaveSource waveSource,
-            string title = "Untitled",
-            string artist = "Unknown Artist",
-            string album = "Unknown Album",
+            string title,
+            string artist,
+            string album,
             byte[] image = null)
         {
             WaveSource = waveSource;

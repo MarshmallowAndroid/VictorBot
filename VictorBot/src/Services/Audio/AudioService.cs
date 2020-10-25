@@ -3,25 +3,17 @@ using Discord.Audio;
 using Discord.Commands;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CSCore;
 using CSCore.Codecs;
 using VictorBot.Services.Audio;
-using CSCore.Tags.ID3;
 using CSCore.Streams.Effects;
-using Discord.WebSocket;
 using YoutubeExplode.Videos.Streams;
 using YoutubeExplode.Videos;
-using TagLib;
-using System.Timers;
 using Timer = System.Threading.Timer;
-using CSCore.Codecs.WAV;
-using Discord.Audio.Streams;
 
 namespace VictorBot.Services
 {
@@ -38,9 +30,9 @@ namespace VictorBot.Services
         {
             var taglib = TagLib.File.Create(path);
 
-            string title = taglib.Tag.Title;
-            string artist = taglib.Tag.Performers[0];
-            string album = taglib.Tag.Album;
+            string title = taglib.Tag.Title ?? "Unknown Title";
+            string artist = taglib.Tag.Performers[0] ?? "Unknown Artist";
+            string album = taglib.Tag.Album ?? "Unknown Album";
             byte[] image = null;
 
             if (taglib.Tag.Pictures.Length > 0) image = taglib.Tag.Pictures[0].Data.ToArray();
@@ -67,7 +59,8 @@ namespace VictorBot.Services
                     //PostEQCenterFrequency = 4800
                 },
                 video.Title,
-                video.Author);
+                video.Author,
+                "YouTube");
         }
 
         public Task PlayPauseAsync(SocketCommandContext context)
