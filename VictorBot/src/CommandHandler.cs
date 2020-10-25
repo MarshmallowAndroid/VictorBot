@@ -123,17 +123,6 @@ namespace VictorBot
                     return;
                 }
 
-                var channelId = voiceChannel.Id;
-                var audioClients = audioService.AudioClients;
-
-                IAudioClient audioClient;
-                if (!audioClients.ContainsKey(channelId))
-                {
-                    audioClient = await voiceChannel.ConnectAsync();
-                    audioClients.Add(channelId, audioClient);
-                }
-                else audioClient = audioClients[channelId];
-
                 await audioService.PlayFileAsync(@"C:\Users\jacob\Desktop\breathe.mp3", context);
 
             }
@@ -142,24 +131,6 @@ namespace VictorBot
                 await context.Channel.SendMessageAsync("Shutting down.");
                 await client.StopAsync();
             }
-        }
-
-        public async Task<ulong> JoinVoiceChannelAsync(SocketCommandContext context, AudioService audioService)
-        {
-            var channel = ((IGuildUser)context.User).VoiceChannel;
-            if (channel == null) return 0;
-
-            var channelId = channel.Id;
-            var audioClients = audioService.AudioClients;
-
-            IAudioClient audioClient;
-            if (!audioClients.ContainsKey(channelId))
-            {
-                audioClient = await channel.ConnectAsync();
-                audioClients.Add(channelId, audioClient);
-            }
-
-            return channelId;
         }
     }
 }
