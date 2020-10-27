@@ -13,7 +13,7 @@ using System.IO;
 
 namespace VictorBot.Modules
 {
-    public class VoiceModule : ModuleBase<SocketCommandContext>
+    public class AudioModule : ModuleBase<SocketCommandContext>
     {
         public AudioService AudioService { get; set; }
 
@@ -89,11 +89,17 @@ namespace VictorBot.Modules
             await AudioService.EarRapeAsync(Context);
         }
 
-        [Command("setearrapeparams")]
-        [Alias("serp")]
-        public async Task SetEarRapeParamsAsync([Remainder] string paramsString)
+        [Command("setearrapeamount")]
+        [Alias("sera")]
+        public async Task SetEarRapeAmountAsync([Remainder] string paramsString)
         {
-            await AudioService.SetEarRapeParamsAsync(Context, paramsString);
+            await AudioService.SetEarRapeAmountAsync(Context, paramsString);
+        }
+
+        [Command("seek")]
+        public async Task SeekAsync([Remainder] string position)
+        {
+            await AudioService.SeekAsync(Context, position);
         }
 
         [Command("disconnect")]

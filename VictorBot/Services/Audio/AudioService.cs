@@ -7,10 +7,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CSCore;
-using CSCore.Codecs;
+using NAudio;
+using NAudio.Wave;
 using VictorBot.Services.Audio;
-using CSCore.Streams.Effects;
 using YoutubeExplode.Videos.Streams;
 using YoutubeExplode.Videos;
 using Timer = System.Threading.Timer;
@@ -26,6 +25,12 @@ namespace VictorBot.Services
             Timers = new Dictionary<ulong, Timer>();
         }
 
+        public Dictionary<ulong, IAudioClient> AudioClients { get; set; }
+
+        public Dictionary<ulong, AudioPlayer> Players { get; set; }
+
+        public Dictionary<ulong, Timer> Timers { get; set; }
+
         public Track CreateTrackFromFile(string path)
         {
             var taglib = TagLib.File.Create(path);
@@ -37,31 +42,35 @@ namespace VictorBot.Services
 
             if (taglib.Tag.Pictures.Length > 0) image = taglib.Tag.Pictures[0].Data.ToArray();
 
+            int start = 0;
+            int end = 0;
+
+            string loopFile = Path.GetDirectoryName(path) + "\\" + Path.GetFileNameWithoutExtension(path) + ".txt";
+            if (File.Exists(loopFile))
+            {
+                using var file = File.OpenText(loopFile);
+                start = int.Parse(file.ReadLine());
+                end = int.Parse(file.ReadLine());
+            }
+
             return new Track(
-                new DmoDistortionEffect(CodecFactory.Instance.GetCodec(path).ChangeSampleRate(48000))
-                {
-                    IsEnabled = false,
-                },
+                new LoopStream(new AudioFileReader(path),
+                    start, end),
                 title,
                 artist,
                 album,
                 image);
         }
 
-        public Track CreateTrackFromYouTubeStream(Video video, IStreamInfo streamInfo)
-        {
-            return new Track(
-                new DmoDistortionEffect(CodecFactory.Instance.GetCodec(new Uri(streamInfo.Url)).ChangeSampleRate(48000))
-                {
-                    IsEnabled = false,
-                    //Gain = 0.0f,
-                    //PostEQBandwidth = 7200,
-                    //PostEQCenterFrequency = 4800
-                },
+        public Track CreateTrackFromYouTubeStream(Video video, IStreamInfo streamInfo) =>
+            new Track(
+                new Wave32To16Stream(
+                    new ResamplerDmoStream(
+                        new MediaFoundationReader(streamInfo.Url),
+                        WaveFormat.CreateIeeeFloatWaveFormat(48000, 2))),
                 video.Title,
                 video.Author,
                 "YouTube");
-        }
 
         public Task PlayPauseAsync(SocketCommandContext context)
         {
@@ -113,12 +122,22 @@ namespace VictorBot.Services
             return Task.CompletedTask;
         }
 
-        public Task SetEarRapeParamsAsync(SocketCommandContext context, string paramsString)
+        public Task SetEarRapeAmountAsync(SocketCommandContext context, string paramsString)
         {
             if (IsInVoiceChannel(context))
             {
                 var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].SetEarRapeParams(paramsString);
+                Players[voiceChannelId].SetEarRapeAmount(paramsString);
+            }
+            return Task.CompletedTask;
+        }
+
+        public Task SeekAsync(SocketCommandContext context, string position)
+        {
+            if (IsInVoiceChannel(context))
+            {
+                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
+                Players[voiceChannelId].Seek(long.Parse(position));
             }
             return Task.CompletedTask;
         }
@@ -202,12 +221,12 @@ namespace VictorBot.Services
 
                         player.TrackQueued += async (s, e) =>
                         {
-                            await SendAudioInfoEmbedAsync("Queuing track", e.QueuedTrack, context);
+                            //await SendAudioInfoEmbedAsync("Queuing track", e.QueuedTrack, context);
                         };
 
                         player.TrackChanged += async (s, e) =>
                         {
-                            await SendAudioInfoEmbedAsync("Playing track", e.NewTrack, context);
+                            //await SendAudioInfoEmbedAsync("Playing track", e.NewTrack, context);
                         };
 
                         await audioClient.SetSpeakingAsync(true);
@@ -301,11 +320,5 @@ namespace VictorBot.Services
             else
                 await context.Channel.SendMessageAsync(embed: embed.Build());
         }
-
-        public Dictionary<ulong, IAudioClient> AudioClients { get; set; }
-
-        public Dictionary<ulong, AudioPlayer> Players { get; set; }
-
-        public Dictionary<ulong, Timer> Timers { get; set; }
     }
 }

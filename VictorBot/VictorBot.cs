@@ -28,7 +28,7 @@ namespace VictorBot
 
                 serviceProvider.GetRequiredService<CommandService>().Log += LogAsync;
 
-                await client.LoginAsync(TokenType.Bot, await new StreamReader("..\\..\\token.txt").ReadToEndAsync());
+                await client.LoginAsync(TokenType.Bot, await new StreamReader("..\\..\\..\\token.txt").ReadToEndAsync());
                 await client.StartAsync();
 
                 await serviceProvider.GetRequiredService<CommandHandler>().InitializeAsync();

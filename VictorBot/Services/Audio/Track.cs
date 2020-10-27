@@ -1,5 +1,4 @@
-﻿using CSCore;
-using CSCore.Tags.ID3;
+﻿using NAudio.Wave;
 using System.Drawing;
 
 namespace VictorBot.Services
@@ -7,20 +6,20 @@ namespace VictorBot.Services
     public class Track
     {
         public Track(
-            IWaveSource waveSource,
+            WaveStream waveStream,
             string title,
             string artist,
             string album,
             byte[] image = null)
         {
-            WaveSource = waveSource;
+            WaveStream = waveStream;
             Title = title;
             Artist = artist;
             Album = album;
             Image = image;
         }
 
-        public IWaveSource WaveSource { get; }
+        public WaveStream WaveStream { get; }
 
         public string Title { get; }
         public string Artist { get; }

@@ -1,8 +1,5 @@
-﻿using CSCore;
-using CSCore.DMO.Effects;
-using CSCore.Streams;
-using CSCore.Streams.Effects;
-using CSCore.Tags.ID3;
+﻿using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,77 +11,59 @@ namespace VictorBot.Services.Audio
 {
     public class AudioPlayer : IDisposable
     {
-        private IWaveSource currentSource;
-        private readonly Stream _destinationStream;
+        private WaveStream currentStream;
+        private ISampleProvider earRapeProvider;
+        private ISampleProvider resampleProvider;
+        private IWaveProvider waveProvider;
+        private readonly Stream destinationStream;
 
         private bool playing = false;
         private bool paused = false;
         private bool stopRequested = false;
         private bool skipRequested = false;
 
-        //public AudioPlayer(IWaveSource sourceStream)
-        //{
-        //    queue = new Queue<IWaveSource>();
-        //    queue.Enqueue(sourceStream);
-
-        //    currentStream = queue.Dequeue();
-        //}
-
-        public AudioPlayer(Stream destinationStream)
+        public AudioPlayer(Stream outputStream)
         {
             AudioQueue = new Queue<Track>();
 
-            _destinationStream = destinationStream;
+            destinationStream = outputStream;
         }
 
-        public bool Loop { get; set; }
+        public bool Loop { get => ((LoopStream)currentStream).Loop; set => ((LoopStream)currentStream).Loop = value; }
 
         public Queue<Track> AudioQueue { get; }
 
         public void Enqueue(Track track)
         {
-            //queue.Enqueue(waveSource);
-            //queue.Enqueue(new DmoDistortionEffect(WaveSource)
-            //{
-            //    IsEnabled = false,
-            //    Gain = 0.0f,
-            //    PostEQBandwidth = 7200,
-            //    PostEQCenterFrequency = 4800
-            //});
-
-            //new DmoDistortionEffect(WaveSource)
-            //{
-            //    IsEnabled = false,
-            //    Gain = 0.0f,
-            //    PostEQBandwidth = 7200,
-            //    PostEQCenterFrequency = 4800
-            //}
-
             TrackQueuedEventArgs eventArgs = new TrackQueuedEventArgs(track);
             OnTrackQueued(eventArgs);
 
             AudioQueue.Enqueue(track);
 
-            if (!playing) currentSource = AudioQueue.Dequeue().WaveSource;
+            if (!playing)
+            {
+                Dequeue();
+            }
         }
 
-        public void SetEarRapeParams(string paramsString)
+        private void Dequeue()
         {
-            string[] splitString = paramsString.Split(' ');
+            currentStream = AudioQueue.Dequeue().WaveStream;
+            resampleProvider = new WdlResamplingSampleProvider(currentStream.ToSampleProvider(), 48000);
+            earRapeProvider = new EarRapeSampleProvider(resampleProvider);
+            waveProvider = earRapeProvider.ToWaveProvider16();
+        }
 
-            var distortion = currentSource as DmoDistortionEffect;
-
-            distortion.Edge = float.Parse(splitString[0]);
-            distortion.Gain = int.Parse(splitString[1]);
-            distortion.PostEQBandwidth = int.Parse(splitString[2]);
-            distortion.PostEQCenterFrequency = int.Parse(splitString[3]);
-            distortion.PreLowpassCutoff = int.Parse(splitString[4]);
+        public void SetEarRapeAmount(string amount)
+        {
+            var earRape = earRapeProvider as EarRapeSampleProvider;
+            earRape.EarRapeAmount = float.Parse(amount);
         }
 
         public void EarRape()
         {
-            var distortion = currentSource as DmoDistortionEffect;
-            distortion.IsEnabled = !distortion.IsEnabled;
+            var earRape = earRapeProvider as EarRapeSampleProvider;
+            earRape.EarRapeEnabled = !earRape.EarRapeEnabled;
         }
 
         public void PlayPause()
@@ -95,6 +74,11 @@ namespace VictorBot.Services.Audio
         public void Stop()
         {
             stopRequested = true;
+        }
+
+        public void Seek(long position)
+        {
+            currentStream.Position = position;
         }
 
         public void Skip()
@@ -125,7 +109,7 @@ namespace VictorBot.Services.Audio
                         TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek());
                         OnTrackChanged(eventArgs);
 
-                        currentSource = AudioQueue.Dequeue().WaveSource;
+                        Dequeue();
                     }
                     else break;
                 }
@@ -134,28 +118,25 @@ namespace VictorBot.Services.Audio
                 {
                     try
                     {
-                        int readBytes = currentSource.Read(buffer, 0, buffer.Length);
+                        int readBytes = waveProvider.Read(buffer, 0, buffer.Length);
                         if (readBytes > 0)
                         {
-                            _destinationStream.Write(buffer, 0, buffer.Length);
-
-                            Console.WriteLine("Position: " + currentSource.Position + ", Length: " + currentSource.Length);
-
+                            destinationStream.Write(buffer, 0, buffer.Length);
                             playing = true;
                         }
                         else
                         {
                             if (Loop)
                             {
-                                currentSource.Position = 0;
+                                currentStream.Position = 0;
                             }
                             else if (AudioQueue.Count > 0)
                             {
                                 TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek());
                                 OnTrackChanged(eventArgs);
 
-                                currentSource.Dispose();
-                                currentSource = AudioQueue.Dequeue().WaveSource;
+                                currentStream.Dispose();
+                                Dequeue();
                             }
                             else break;
                         }
@@ -175,7 +156,7 @@ namespace VictorBot.Services.Audio
 
         public void Dispose()
         {
-            currentSource?.Dispose();
+            currentStream?.Dispose();
             AudioQueue.Clear();
         }
 
