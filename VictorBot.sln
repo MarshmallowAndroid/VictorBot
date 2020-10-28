@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VictorBotML.Model", "Victor
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VictorBotML.ConsoleApp", "VictorBotML.ConsoleApp\VictorBotML.ConsoleApp.csproj", "{C4D56836-4981-42F5-A907-AE787AF15B25}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VictorBot", "VictorBot\VictorBot.csproj", "{C68DEAAB-7A02-476E-B7B1-44DAF4356059}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "VictorBot", "VictorBot\VictorBot.csproj", "{C68DEAAB-7A02-476E-B7B1-44DAF4356059}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

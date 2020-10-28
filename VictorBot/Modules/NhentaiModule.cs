@@ -1,16 +1,7 @@
-﻿using Discord.Commands;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using Discord;
+using Discord.Commands;
 using System.Threading.Tasks;
-using VictorBot;
-using System.Net;
-using System.Text.RegularExpressions;
-using System.Threading;
-using NhentaiApi;
-using Discord;
-using System.IO;
+using VictorBot.NhentaiApi;
 
 namespace VictorBot.Modules
 {
@@ -38,7 +29,7 @@ namespace VictorBot.Modules
             {
                 if (query != string.Empty)
                 {
-                    await ReplyAsync(embed: NhClient.GetGalleryEmbed(await NhClient.GetRandomResultAsync(query), Context.User)); 
+                    await ReplyAsync(embed: NhClient.GetGalleryEmbed(await NhClient.GetRandomResultAsync(query), Context.User));
                 }
                 else
                 {

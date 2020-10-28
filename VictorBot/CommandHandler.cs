@@ -1,19 +1,13 @@
 ﻿using Discord;
-using Discord.Audio;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Reflection;
-using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
-using VictorBot.Services;
+using VictorBot.Services.Audio;
 
 namespace VictorBot
 {
@@ -51,11 +45,6 @@ namespace VictorBot
             if (!message.HasCharPrefix('.', ref argPos)) return;
             if (message.HasMentionPrefix(_client.CurrentUser, ref argPos)) return;
             if (message.Author.IsBot) return;
-
-            if (context.IsPrivate)
-                LogHelper.Log($"User {message.Author.Username} invoked command: \"{message.Content}\" in DMs");
-            else
-                LogHelper.Log($"User {message.Author.Username} invoked command: \"{message.Content}\" in {context.Guild.Name} #{message.Channel.Name}");
 
             await _commandService.ExecuteAsync(context, argPos, _services);
         }

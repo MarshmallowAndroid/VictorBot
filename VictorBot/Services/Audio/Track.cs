@@ -1,9 +1,9 @@
 ﻿using NAudio.Wave;
-using System.Drawing;
+using System;
 
 namespace VictorBot.Services
 {
-    public class Track
+    public class Track : IDisposable
     {
         public Track(
             WaveStream waveStream,
@@ -25,5 +25,10 @@ namespace VictorBot.Services
         public string Artist { get; }
         public string Album { get; }
         public byte[] Image { get; }
+
+        public void Dispose()
+        {
+            WaveStream?.Dispose();
+        }
     }
 }

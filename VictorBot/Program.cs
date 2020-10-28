@@ -1,23 +1,18 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using GelbooruApi;
 using Microsoft.Extensions.DependencyInjection;
-using NhentaiApi;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Net;
 using System.Net.Http;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
-using VictorBot.Services;
+using VictorBot.GelbooruApi;
+using VictorBot.NhentaiApi;
+using VictorBot.Services.Audio;
 
 namespace VictorBot
 {
-    class VictorBot
+    class Program
     {
         public async Task MainAsync()
         {
@@ -40,11 +35,11 @@ namespace VictorBot
         private ServiceProvider ConfigureServiceProviders()
         {
             return new ServiceCollection()
-                .AddSingleton<DiscordSocketClient>()
+                .AddSingleton(new DiscordSocketClient(new DiscordSocketConfig() { LogLevel = LogSeverity.Debug }))
                 .AddSingleton(new CommandService(
                     new CommandServiceConfig()
                     {
-                        DefaultRunMode = RunMode.Async,
+                        LogLevel = LogSeverity.Debug,
                         ThrowOnError = true
                     }))
                 .AddSingleton<CommandHandler>()
@@ -61,6 +56,6 @@ namespace VictorBot
             return Task.CompletedTask;
         }
 
-        static void Main(string[] args) => new VictorBot().MainAsync().GetAwaiter().GetResult();
+        static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
     }
 }

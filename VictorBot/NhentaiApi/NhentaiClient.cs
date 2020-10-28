@@ -5,13 +5,11 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
-using System.Security.AccessControl;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 
-namespace NhentaiApi
+namespace VictorBot.NhentaiApi
 {
     public class NhentaiClient
     {

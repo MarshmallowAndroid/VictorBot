@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace NhentaiApi
+﻿namespace VictorBot.NhentaiApi
 {
     public class NhentaiGallery
     {

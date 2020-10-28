@@ -1,6 +1,5 @@
 ﻿using Discord.Commands;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -51,7 +50,7 @@ namespace VictorBot.Modules
         }
 
         [Command("shuffle")]
-        public Task ShuffleList([Remainder]string items)
+        public Task ShuffleList([Remainder] string items)
         {
             StringBuilder finalList = new StringBuilder();
 

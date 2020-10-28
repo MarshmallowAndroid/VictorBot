@@ -4,17 +4,12 @@ using Discord.WebSocket;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
-using System.Xml;
 using System.Xml.Serialization;
-using VictorBot.GelbooruApi;
 
-namespace GelbooruApi
+namespace VictorBot.GelbooruApi
 {
     /// <summary>
     /// Client for interacting with the Gelbooru API

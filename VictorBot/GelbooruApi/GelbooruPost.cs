@@ -1,6 +1,6 @@
 ﻿using System.Xml.Serialization;
 
-namespace GelbooruApi
+namespace VictorBot.GelbooruApi
 {
     /// <summary>
     /// XML serialization class for a single Gelbooru post
