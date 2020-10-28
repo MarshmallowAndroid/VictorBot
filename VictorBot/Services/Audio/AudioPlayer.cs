@@ -3,8 +3,6 @@ using NAudio.Wave.SampleProviders;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace VictorBot.Services.Audio
@@ -17,7 +15,6 @@ namespace VictorBot.Services.Audio
         private IWaveProvider waveProvider;
         private readonly Stream destinationStream;
 
-        private bool playing = false;
         private bool paused = false;
         private bool stopRequested = false;
         private bool skipRequested = false;
@@ -25,9 +22,10 @@ namespace VictorBot.Services.Audio
         public AudioPlayer(Stream outputStream)
         {
             AudioQueue = new Queue<Track>();
-
             destinationStream = outputStream;
         }
+
+        public bool Playing { get; private set; } = false;
 
         public bool Loop { get => ((LoopStream)currentStream).Loop; set => ((LoopStream)currentStream).Loop = value; }
 
@@ -40,14 +38,12 @@ namespace VictorBot.Services.Audio
 
             AudioQueue.Enqueue(track);
 
-            if (!playing)
-            {
-                Dequeue();
-            }
+            if (!Playing) Dequeue();
         }
 
         private void Dequeue()
         {
+            currentStream?.Dispose();
             currentStream = AudioQueue.Dequeue().WaveStream;
             resampleProvider = new WdlResamplingSampleProvider(currentStream.ToSampleProvider(), 48000);
             earRapeProvider = new EarRapeSampleProvider(resampleProvider);
@@ -86,18 +82,34 @@ namespace VictorBot.Services.Audio
             skipRequested = true;
         }
 
-        public Task BeginPlay(int bufferSize = 81920)
+        public async Task PlayAsync(int bufferSize = 81920)
         {
             byte[] buffer = new byte[bufferSize];
 
-            while (true)
-            {
-                if (stopRequested)
-                {
-                    Dispose();
+            Playing = true;
 
-                    stopRequested = false;
-                    break;
+            while (!stopRequested)
+            {
+                if (!paused)
+                {
+                    int totalReadBytes = 0;
+                    while (totalReadBytes < bufferSize)
+                    {
+                        int readBytes = waveProvider.Read(buffer, totalReadBytes, bufferSize - totalReadBytes);
+
+                        if (readBytes == 0)
+                        {
+                            if (AudioQueue.Count > 0)
+                            {
+                                OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek()));
+                                Dequeue();
+                            }
+                            else break;
+                        }
+                        totalReadBytes += readBytes;
+                    }
+
+                    if (totalReadBytes > 0) await destinationStream.WriteAsync(buffer, 0, totalReadBytes);
                 }
 
                 if (skipRequested)
@@ -106,52 +118,17 @@ namespace VictorBot.Services.Audio
 
                     if (AudioQueue.Count > 0)
                     {
-                        TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek());
-                        OnTrackChanged(eventArgs);
-
+                        OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek()));
                         Dequeue();
                     }
-                    else break;
+                    else Playing = false;
                 }
-
-                if (!paused)
-                {
-                    try
-                    {
-                        int readBytes = waveProvider.Read(buffer, 0, buffer.Length);
-                        if (readBytes > 0)
-                        {
-                            destinationStream.Write(buffer, 0, buffer.Length);
-                            playing = true;
-                        }
-                        else
-                        {
-                            if (Loop)
-                            {
-                                currentStream.Position = 0;
-                            }
-                            else if (AudioQueue.Count > 0)
-                            {
-                                TrackChangedEventArgs eventArgs = new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek());
-                                OnTrackChanged(eventArgs);
-
-                                currentStream.Dispose();
-                                Dequeue();
-                            }
-                            else break;
-                        }
-                    }
-                    catch (Exception)
-                    {
-                        playing = false;
-                    }
-                }
-
             }
 
-            playing = false;
+            OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Stopped, null));
+            Dispose();
 
-            return Task.CompletedTask;
+            Playing = false;
         }
 
         public void Dispose()
@@ -193,6 +170,7 @@ namespace VictorBot.Services.Audio
     public enum TrackChangedReason
     {
         Skipped,
+        Stopped,
         Ended
     }
 }
