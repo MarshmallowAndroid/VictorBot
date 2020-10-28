@@ -1,15 +1,10 @@
 ﻿using Discord;
-using Discord.Audio;
 using Discord.Commands;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Threading;
+using System.IO;
 using System.Threading.Tasks;
-using VictorBot.Services;
+using VictorBot.Services.Audio;
 using YoutubeExplode;
 using YoutubeExplode.Videos.Streams;
-using VictorBot.Services.Audio;
-using System.IO;
 
 namespace VictorBot.Modules
 {
@@ -23,16 +18,16 @@ namespace VictorBot.Modules
             await AudioService.JoinVoiceChannelAsync(Context);
         }
 
-        [Command("localplay")]
+        [Command("localplay", RunMode = RunMode.Async)]
         [Alias("lp", "lplay")]
         public async Task PlayAsync(string path)
         {
             await AudioService.PlayFileAsync(path, Context);
         }
 
-        [Command("quickplay")]
+        [Command("quickplay", RunMode = RunMode.Async)]
         [Alias("qp")]
-        public async Task QuickPlay(string fileName)
+        public async Task QuickPlayAsync(string fileName)
         {
             string musicDirectory = @"C:\Users\jacob\Desktop\BotTestMusic\";
 
@@ -42,9 +37,21 @@ namespace VictorBot.Modules
             else await ReplyAsync("No match.");
         }
 
-        [Command("ytplay")]
+        [Command("imasplay", RunMode = RunMode.Async)]
+        [Alias("ip")]
+        public async Task ImasPlayAsync(string fileName)
+        {
+            string musicDirectory = @"C:\Users\jacob\Desktop\BotTestMusic\imasgamebgm";
+
+            string[] files = Directory.GetFiles(musicDirectory, fileName + ".*");
+
+            if (files.Length > 0) await PlayAsync(files[0]);
+            else await ReplyAsync("No match.");
+        }
+
+        [Command("ytplay", RunMode = RunMode.Async)]
         [Alias("yt")]
-        public async Task YouTubePlay(string url)
+        public async Task YouTubePlayAsync(string url)
         {
             var youtube = new YoutubeClient();
             var streamManifest = await youtube.Videos.Streams.GetManifestAsync(url);
@@ -106,7 +113,9 @@ namespace VictorBot.Modules
         [Alias("dc")]
         public async Task DisconnectAsync()
         {
-            await ((IGuildUser)Context.User).VoiceChannel.DisconnectAsync();
+            var voiceChannelId = ((IGuildUser)Context.User).VoiceChannel.Id;
+            if (AudioService.Players[voiceChannelId].P)
+                await ((IGuildUser)Context.User).VoiceChannel.DisconnectAsync();
         }
     }
 }
