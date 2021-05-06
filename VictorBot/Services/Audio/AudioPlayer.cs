@@ -13,11 +13,13 @@ namespace VictorBot.Services.Audio
         private ISampleProvider earRapeProvider;
         private ISampleProvider resampleProvider;
         private IWaveProvider waveProvider;
-        private readonly Stream destinationStream;
+        private Stream destinationStream;
 
         private bool paused = false;
-        private bool stopRequested = false;
         private bool skipRequested = false;
+        private bool stopRequested = false;
+
+        private object lockObject = new object();
 
         public AudioPlayer(Stream outputStream)
         {
@@ -33,12 +35,12 @@ namespace VictorBot.Services.Audio
 
         public void Enqueue(Track track)
         {
-            TrackQueuedEventArgs eventArgs = new TrackQueuedEventArgs(track);
+            TrackQueuedEventArgs eventArgs = new(track);
             OnTrackQueued(eventArgs);
 
             AudioQueue.Enqueue(track);
 
-            if (!Playing) Dequeue();
+            if (currentStream is null) Dequeue();
         }
 
         private void Dequeue()
@@ -62,14 +64,20 @@ namespace VictorBot.Services.Audio
             earRape.EarRapeEnabled = !earRape.EarRapeEnabled;
         }
 
-        public void PlayPause()
+        public void Pause()
         {
-            paused = !paused;
+            if (Playing) paused = !paused;
         }
 
         public void Stop()
         {
-            stopRequested = true;
+            if (Playing)
+            {
+                lock (lockObject)
+                {
+                    stopRequested = true;
+                }
+            }
         }
 
         public void Seek(long position)
@@ -79,10 +87,24 @@ namespace VictorBot.Services.Audio
 
         public void Skip()
         {
-            skipRequested = true;
+            if (Playing) skipRequested = true;
         }
 
-        public async Task PlayAsync(int bufferSize = 81920)
+        public void ChangeStream(Stream destinationStream)
+        {
+            if (Playing)
+            {
+                this.destinationStream.Dispose();
+                this.destinationStream = destinationStream;
+            }
+        }
+
+        public void BeginPlay(int bufferSize = 81920)
+        {
+            Task.Run(() => Play(bufferSize));
+        }
+
+        private void Play(int bufferSize = 81920)
         {
             byte[] buffer = new byte[bufferSize];
 
@@ -90,56 +112,74 @@ namespace VictorBot.Services.Audio
 
             while (!stopRequested)
             {
-                if (!paused)
-                {
-                    int totalReadBytes = 0;
-                    while (totalReadBytes < bufferSize)
-                    {
-                        int readBytes = waveProvider.Read(buffer, totalReadBytes, bufferSize - totalReadBytes);
+                int totalReadBytes = 0;
 
-                        if (readBytes == 0)
+                lock (lockObject)
+                {
+                    if (!paused)
+                    {
+                        while (totalReadBytes < bufferSize)
                         {
-                            if (AudioQueue.Count > 0)
+                            int readBytes = waveProvider.Read(buffer, totalReadBytes, bufferSize - totalReadBytes);
+
+                            if (readBytes == 0)
                             {
-                                OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek()));
-                                Dequeue();
+                                if (AudioQueue.Count > 0)
+                                {
+                                    OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Ended, AudioQueue.Peek()));
+                                    Dequeue();
+                                }
+                                else break;
                             }
-                            else break;
+                            totalReadBytes += readBytes;
                         }
-                        totalReadBytes += readBytes;
                     }
-
-                    if (totalReadBytes > 0) await destinationStream.WriteAsync(buffer, 0, totalReadBytes);
-                }
-
-                if (skipRequested)
-                {
-                    skipRequested = false;
-
-                    if (AudioQueue.Count > 0)
+                    else
                     {
-                        OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek()));
-                        Dequeue();
+                        for (int i = 0; i < bufferSize; i++)
+                        {
+                            buffer[i] = 0;
+                        }
                     }
-                    else Playing = false;
+
+                    if (stopRequested) break;
+                    if (totalReadBytes > 0) destinationStream.Write(buffer, 0, totalReadBytes);
+
+                    if (skipRequested)
+                    {
+                        skipRequested = false;
+
+                        if (AudioQueue.Count > 0)
+                        {
+                            OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Skipped, AudioQueue.Peek()));
+                            Dequeue();
+                        }
+                        else currentStream.Position = currentStream.Length - 1;
+                    }
                 }
             }
 
-            OnTrackChanged(new TrackChangedEventArgs(TrackChangedReason.Stopped, null));
-            Dispose();
-
+            OnStopped();
             Playing = false;
+            stopRequested = false;
+
+            Dispose();
         }
 
         public void Dispose()
         {
             currentStream?.Dispose();
+            currentStream = null;
+            //destinationStream?.Dispose();
             AudioQueue.Clear();
+            GC.SuppressFinalize(this);
         }
 
         protected virtual void OnTrackChanged(TrackChangedEventArgs e) => TrackChanged?.Invoke(this, e);
         protected virtual void OnTrackQueued(TrackQueuedEventArgs e) => TrackQueued?.Invoke(this, e);
+        protected virtual void OnStopped() => Stopped?.Invoke();
 
+        public event Action Stopped;
         public event EventHandler<TrackQueuedEventArgs> TrackQueued;
         public event EventHandler<TrackChangedEventArgs> TrackChanged;
     }

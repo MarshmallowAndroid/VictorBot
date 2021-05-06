@@ -1,6 +1,4 @@
-﻿using Discord;
-using Discord.Commands;
-using System.IO;
+﻿using Discord.Commands;
 using System.Threading.Tasks;
 using VictorBot.Services.Audio;
 using YoutubeExplode;
@@ -12,41 +10,50 @@ namespace VictorBot.Modules
     {
         public AudioService AudioService { get; set; }
 
-        [Command("join")]
+        [Command("join", RunMode = RunMode.Async)]
         public async Task JoinVoiceChannelAsync()
         {
             await AudioService.JoinVoiceChannelAsync(Context);
         }
 
-        [Command("localplay", RunMode = RunMode.Async)]
-        [Alias("lp", "lplay")]
-        public async Task PlayAsync(string path)
+        #region Legacy functions
+        [Command("directplay", RunMode = RunMode.Async)]
+        [Alias("dp", "dplay")]
+        public async Task DirectPlayAsync(string path)
         {
             await AudioService.PlayFileAsync(path, Context);
         }
 
-        [Command("quickplay", RunMode = RunMode.Async)]
-        [Alias("qp")]
-        public async Task QuickPlayAsync(string fileName)
+        //[Command("quickplay", RunMode = RunMode.Async)]
+        //[Alias("qp")]
+        //public async Task QuickPlayAsync(string fileName)
+        //{
+        //    string musicDirectory = @"C:\Users\jacob\Desktop\TestMusic\";
+
+        //    string[] files = Directory.GetFiles(musicDirectory, fileName + ".*");
+
+        //    if (files.Length > 0) await PlayAsync(files[0]);
+        //    else await ReplyAsync("No match.");
+        //}
+
+        //[Command("imasplay", RunMode = RunMode.Async)]
+        //[Alias("ip")]
+        //public async Task ImasPlayAsync(string fileName)
+        //{
+        //    string musicDirectory = @"C:\Users\jacob\Desktop\TestMusic\imasgamebgm";
+
+        //    string[] files = Directory.GetFiles(musicDirectory, fileName + ".*");
+
+        //    if (files.Length > 0) await PlayAsync(files[0]);
+        //    else await ReplyAsync("No match.");
+        //}
+        #endregion
+
+        [Command("localplay", RunMode = RunMode.Async)]
+        [Alias("lp", "lplay")]
+        public async Task LocalPlayAsync([Remainder] string query)
         {
-            string musicDirectory = @"C:\Users\jacob\Desktop\BotTestMusic\";
-
-            string[] files = Directory.GetFiles(musicDirectory, fileName + ".*");
-
-            if (files.Length > 0) await PlayAsync(files[0]);
-            else await ReplyAsync("No match.");
-        }
-
-        [Command("imasplay", RunMode = RunMode.Async)]
-        [Alias("ip")]
-        public async Task ImasPlayAsync(string fileName)
-        {
-            string musicDirectory = @"C:\Users\jacob\Desktop\BotTestMusic\imasgamebgm";
-
-            string[] files = Directory.GetFiles(musicDirectory, fileName + ".*");
-
-            if (files.Length > 0) await PlayAsync(files[0]);
-            else await ReplyAsync("No match.");
+            await AudioService.SearchAndPlayFileAsync(query, Context);
         }
 
         [Command("ytplay", RunMode = RunMode.Async)]
@@ -56,7 +63,7 @@ namespace VictorBot.Modules
             var youtube = new YoutubeClient();
             var streamManifest = await youtube.Videos.Streams.GetManifestAsync(url);
             var video = await youtube.Videos.GetAsync(url);
-            var audioStreamInfo = streamManifest.GetAudioOnly().WithHighestBitrate();
+            var audioStreamInfo = streamManifest.GetAudioOnlyStreams().GetWithHighestBitrate();
 
             if (audioStreamInfo != null)
             {
@@ -113,9 +120,7 @@ namespace VictorBot.Modules
         [Alias("dc")]
         public async Task DisconnectAsync()
         {
-            var voiceChannelId = ((IGuildUser)Context.User).VoiceChannel.Id;
-            if (AudioService.Players[voiceChannelId].P)
-                await ((IGuildUser)Context.User).VoiceChannel.DisconnectAsync();
+            await AudioService.DisconnectAsync(Context);
         }
     }
 }

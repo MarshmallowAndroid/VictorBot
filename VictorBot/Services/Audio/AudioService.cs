@@ -1,39 +1,30 @@
 ﻿using Discord;
-using Discord.Audio;
 using Discord.Commands;
 using NAudio.Vorbis;
 using NAudio.Wave;
-using System;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
-using TagLib.Ogg;
 using YoutubeExplode.Videos;
 using YoutubeExplode.Videos.Streams;
-using Timer = System.Threading.Timer;
+using TLFile = TagLib.File;
 
 namespace VictorBot.Services.Audio
 {
     public partial class AudioService
     {
+        private readonly List<GuildContext> guilds;
+
         public AudioService()
         {
-            AudioClients = new Dictionary<ulong, IAudioClient>();
-            Players = new Dictionary<ulong, AudioPlayer>();
-            Timers = new Dictionary<ulong, Timer>();
+            guilds = new List<GuildContext>();
         }
 
-        public Dictionary<ulong, IAudioClient> AudioClients { get; set; }
-
-        public Dictionary<ulong, AudioPlayer> Players { get; set; }
-
-        public Dictionary<ulong, Timer> Timers { get; set; }
-
-        public Track CreateTrackFromFile(string path)
+        public static Track CreateTrackFromFile(string path)
         {
-            var taglib = TagLib.File.Create(path);
+            var taglib = TLFile.Create(path);
 
             string title = taglib.Tag.Title ?? "Unknown Title";
             string artist = taglib.Tag.Performers.FirstOrDefault() ?? "Unknown Artist";
@@ -47,7 +38,7 @@ namespace VictorBot.Services.Audio
 
             if (Path.GetExtension(path) == ".ogg")
             {
-                var comments = taglib.GetTag(TagLib.TagTypes.Xiph) as XiphComment;
+                var comments = taglib.GetTag(TagLib.TagTypes.Xiph) as TagLib.Ogg.XiphComment;
 
                 start = int.Parse(comments.GetFirstField("LOOPSTART"));
                 end = int.Parse(comments.GetFirstField("LOOPLENGTH")) + start;
@@ -63,15 +54,15 @@ namespace VictorBot.Services.Audio
             else
             {
                 string loopFile = Path.GetDirectoryName(path) + "\\" + Path.GetFileNameWithoutExtension(path) + ".txt";
-                if (System.IO.File.Exists(loopFile))
+                if (File.Exists(loopFile))
                 {
-                    using var file = System.IO.File.OpenText(loopFile);
+                    using var file = File.OpenText(loopFile);
                     start = int.Parse(file.ReadLine());
                     end = int.Parse(file.ReadLine());
                 }
 
                 return new Track(
-                    new LoopStream(new AudioFileReader(path),
+                    new LoopStream(new MediaFoundationReader(path),
                         start, end),
                     title,
                     artist,
@@ -80,189 +71,193 @@ namespace VictorBot.Services.Audio
             }
         }
 
-        public Track CreateTrackFromYouTubeStream(Video video, IStreamInfo streamInfo) =>
-            new Track(
-                new LoopStream(new MediaFoundationReader(streamInfo.Url)),
+        public static Track CreateTrackFromYouTubeStream(Video video, IStreamInfo streamInfo) =>
+            new(new LoopStream(
+                new MediaFoundationReader(streamInfo.Url)),
                 video.Title,
-                video.Author,
+                video.Author.Title,
                 "YouTube");
 
-        public async Task<ulong> JoinVoiceChannelAsync(SocketCommandContext context)
+        private GuildContext GetGuildContext(ICommandContext commandContext)
         {
-            var userVoiceChannel = ((IGuildUser)context.User).VoiceChannel;
-            if (userVoiceChannel == null) return 0;
+            var guild = guilds.Where(x => x.Guild == commandContext.Guild).FirstOrDefault();
 
-            var voiceChannelId = userVoiceChannel.Id;
-
-            IAudioClient audioClient;
-            if (!AudioClients.ContainsKey(voiceChannelId))
+            if (guild == null)
             {
-                audioClient = await userVoiceChannel.ConnectAsync();
+                var newGuild = new GuildContext(commandContext);
+                guilds.Add(newGuild);
 
-                audioClient.Disconnected += (e) =>
-                {
-                    AudioClients.Remove(voiceChannelId);
-                    return Task.CompletedTask;
-                };
-
-                AudioClients.Add(voiceChannelId, audioClient);
-
-                if (!Timers.ContainsKey(voiceChannelId))
-                    Timers.Add(voiceChannelId, new Timer(CheckPlaying, voiceChannelId, Timeout.Infinite, Timeout.Infinite));
+                return newGuild;
             }
-
-            return voiceChannelId;
+            else return guild;
         }
 
-        public bool IsInVoiceChannel(SocketCommandContext context)
+        public async Task JoinVoiceChannelAsync(ICommandContext context)
         {
-            var userVoiceChannel = ((IGuildUser)context.User).VoiceChannel;
-            if (userVoiceChannel == null) return false;
-
-            var voiceChannelId = userVoiceChannel.Id;
-
-            if (!AudioClients.ContainsKey(voiceChannelId))
-            {
-                return false;
-            }
-
-            return true;
+            var guild = GetGuildContext(context);
+            await guild.JoinVoiceChannelAsync();
         }
 
-        private void CheckPlaying(object state)
+        public async Task SearchAndPlayFileAsync(string query, ICommandContext context)
         {
-            var voiceChannelId = (ulong)state;
+            var guild = GetGuildContext(context);
+            var userState = guild.UserStates.Where(u => u.User == context.User).FirstOrDefault();
 
-            if (!Players.ContainsKey(voiceChannelId))
+            if (userState == null)
             {
-                if (AudioClients.ContainsKey(voiceChannelId))
-                {
-                    AudioClients[voiceChannelId].StopAsync();
-                }
+                userState = new UserState(context.User);
+                guild.UserStates.Add(userState);
             }
-        }
 
-        public async Task PlayFileAsync(string path, SocketCommandContext context)
-        {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            var audioClient = AudioClients[voiceChannelId];
-            var timer = Timers[voiceChannelId];
-
-            var track = CreateTrackFromFile(path);
-
-            if (!Players.ContainsKey(voiceChannelId))
+            if (!int.TryParse(query, out int chosen))
             {
-                Console.WriteLine("PlayFileAsync: Playing file...");
+                var results = LocalSearch(query);
+                int resultsLength = results.Length;
 
-                //using (var pcmStream = audioClient.CreateOpusStream())
-                using var pcmStream = audioClient.CreatePCMStream(AudioApplication.Music, 128 * 1024, 16, 100);
-                //Players.Add(voiceChannelId, new AudioPlayer(new OpusEncodeStream(pcmStream, 128 * 1024, AudioApplication.Music, 100)));
-                Players.Add(voiceChannelId, new AudioPlayer(pcmStream));
-
-                using (var player = Players[voiceChannelId])
+                if (resultsLength > 0)
                 {
-                    timer.Change(Timeout.Infinite, Timeout.Infinite);
-
-                    player.TrackQueued += async (s, e) =>
+                    var list = new List<EmbedFieldBuilder>();
+                    for (int i = 0; i < resultsLength; i++)
                     {
-                        //await SendAudioInfoEmbedAsync("Queuing track", e.QueuedTrack, context);
+                        var result = results[i];
+
+                        list.Add(new EmbedFieldBuilder()
+                        {
+                            Name = $"{i + 1}. " + result.Title + " - " + result.Artist,
+                            Value = result.Album
+                        });
+                    }
+
+                    var embed = new EmbedBuilder()
+                    {
+                        Title = "Choose a result",
+                        Fields = list
                     };
 
-                    player.TrackChanged += async (s, e) =>
+                    userState.Results = results;
+                    userState.IsChoosing = true;
+
+                    await context.Channel.SendMessageAsync(embed: embed.Build());
+                }
+                else
+                {
+                    var embed = new EmbedBuilder()
                     {
-                        //await SendAudioInfoEmbedAsync("Playing track", e.NewTrack, context);
+                        Title = "Error",
+                        Description = "No results found."
                     };
 
-                    await audioClient.SetSpeakingAsync(true);
-                    player.Enqueue(track);
-                    await player.PlayAsync();
-                    await pcmStream.FlushAsync();
-                    await audioClient.SetSpeakingAsync(false);
+                    await context.Channel.SendMessageAsync(embed: embed.Build());
                 }
-
-                Players.Remove(voiceChannelId);
-
-                timer.Change(30000, Timeout.Infinite);
             }
             else
             {
-                Console.WriteLine("PlayFileAsync: Queuing file...");
+                var results = userState.Results;
 
-                Players[voiceChannelId].Enqueue(track);
+                if (userState.IsChoosing)
+                {
+                    if (chosen > 0 && chosen <= results.Length)
+                    {
+                        userState.IsChoosing = false;
+                        await PlayFileAsync(results[chosen - 1].Path, context);
+                    }
+                    else
+                        await context.Channel.SendMessageAsync($"Invalid input.");
+                }
+                //else await context.Channel.SendMessageAsync($"User {context.User.Username} is not selecting.");
             }
-
-            Console.WriteLine("PlayFileAsync: Done.");
         }
 
-        public async Task PlayYouTubeAsync(Video video, IStreamInfo streamInfo, SocketCommandContext context)
+        public async Task PlayFileAsync(string path, ICommandContext context)
         {
-            var voiceChannelId = await JoinVoiceChannelAsync(context);
-            var audioClient = AudioClients[voiceChannelId];
+            var guild = GetGuildContext(context);
+            var track = CreateTrackFromFile(path);
+            await guild.PlayTrackAsync(track);
+        }
 
-            var waveSource = CreateTrackFromYouTubeStream(video, streamInfo);
+        public async Task PlayYouTubeAsync(Video video, IStreamInfo streamInfo, ICommandContext context)
+        {
+            var guild = GetGuildContext(context);
+            var track = CreateTrackFromYouTubeStream(video, streamInfo);
+            await guild.PlayTrackAsync(track);
+        }
 
-            if (!Players.ContainsKey(voiceChannelId))
+        public async Task DisconnectAsync(ICommandContext context)
+        {
+            var guild = GetGuildContext(context);
+            await guild.DisconnectAsync();
+            guilds.Remove(guild);
+        }
+
+        static TrackFile[] LocalSearch(string query)
+        {
+            var songs = new List<TrackFile>();
+            using var fileStream = File.OpenRead("cache");
+            using var decompressor = new DeflateStream(fileStream, CompressionMode.Decompress, true);
+
+            using var headerReader = new BinaryReader(fileStream);
+            using var dataReader = new BinaryReader(decompressor);
+
+            headerReader.ReadChars(4);
+
+            int length = headerReader.ReadInt32();
+
+            for (int i = 0; i < length; i++)
             {
-                using (var pcmStream = audioClient.CreatePCMStream(AudioApplication.Music, 128 * 1024))
+                songs.Add(new TrackFile(dataReader.ReadString())
                 {
-                    Players.Add(voiceChannelId, new AudioPlayer(pcmStream));
+                    Title = dataReader.ReadString(),
+                    Album = dataReader.ReadString(),
+                    Artist = dataReader.ReadString()
+                });
+            }
 
-                    using (var audioPlayer = Players[voiceChannelId])
+            var results = new List<TrackFile>();
+
+            foreach (var song in songs)
+            {
+                int match = 0;
+
+                string[] queryWords = query.Split(' ');
+                string[] songWords = song.Title.Split(' ');
+
+                foreach (var queryWord in queryWords)
+                {
+                    foreach (var songWord in songWords)
                     {
-                        await audioClient.SetSpeakingAsync(true);
-                        audioPlayer.Enqueue(waveSource);
-                        await audioPlayer.PlayAsync();
-                        await audioClient.SetSpeakingAsync(false);
+                        if (songWord.ToLower() == queryWord.ToLower()) match++;
                     }
                 }
 
-                Players.Remove(voiceChannelId);
-            }
-            else
-            {
-                Players[voiceChannelId].Enqueue(waveSource);
-            }
-
-            Console.WriteLine("PlayUrlAsync: Done.");
-        }
-
-        public async Task SendAudioInfoEmbedAsync(string title, Track track, SocketCommandContext context)
-        {
-            var image = track.Image;
-            Stream imageStream = null;
-            if (image != null) imageStream = new MemoryStream(image);
-
-            var embed = new EmbedBuilder()
-            {
-                Title = title,
-                Fields = new List<EmbedFieldBuilder>()
+                if (queryWords.Length > 1)
                 {
-                    new EmbedFieldBuilder()
-                    {
-                        IsInline = true,
-                        Name = "Title",
-                        Value = track.Title
-                    },
-                    new EmbedFieldBuilder()
-                    {
-                        IsInline = true,
-                        Name = "Artist",
-                        Value = track.Artist
-                    },
-                    new EmbedFieldBuilder()
-                    {
-                        IsInline = false,
-                        Name = "Album",
-                        Value = track.Album
-                    },
-                },
-                ThumbnailUrl = imageStream != null ? "attachment://cover.png" : ""
-            };
+                    if (match > 1) results.Add(song);
+                }
+                else if (match > 0) results.Add(song);
+            }
 
-            if (imageStream != null)
-                await context.Channel.SendFileAsync(stream: imageStream ?? null, filename: "cover.png", embed: embed.Build());
-            else
-                await context.Channel.SendMessageAsync(embed: embed.Build());
+            if (results.Count == 0)
+            {
+                foreach (var song in songs)
+                {
+                    int match = 0;
+
+                    string[] queryWords = query.Split(' ');
+
+                    foreach (var queryWord in queryWords)
+                    {
+                        if (song.Title.ToLower().Contains(queryWord.ToLower())) match++;
+                    }
+
+                    if (queryWords.Length > 1)
+                    {
+                        if (match > 1) results.Add(song);
+                    }
+                    else if (match > 0) results.Add(song);
+                }
+            }
+
+            return results.ToArray();
         }
     }
 }

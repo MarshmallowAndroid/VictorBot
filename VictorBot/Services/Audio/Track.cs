@@ -29,6 +29,7 @@ namespace VictorBot.Services
         public void Dispose()
         {
             WaveStream?.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

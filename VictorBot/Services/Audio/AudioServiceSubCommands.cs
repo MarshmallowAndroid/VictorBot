@@ -1,78 +1,63 @@
-﻿using Discord;
-using Discord.Commands;
+﻿using Discord.Commands;
 using System.Threading.Tasks;
 
 namespace VictorBot.Services.Audio
 {
     public partial class AudioService
     {
-        public Task PlayPauseAsync(SocketCommandContext context)
+        public Task PlayPauseAsync(ICommandContext context)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].PlayPause();
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.Pause();
+
             return Task.CompletedTask;
         }
 
-        public Task StopAsync(SocketCommandContext context)
+        public Task StopAsync(ICommandContext context)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].Stop();
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.Stop();
+
             return Task.CompletedTask;
         }
 
-        public Task LoopAsync(SocketCommandContext context)
+        public Task LoopAsync(ICommandContext context)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].Loop = !Players[voiceChannelId].Loop;
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.Pause();
+
             return Task.CompletedTask;
         }
 
-        public Task SkipAsync(SocketCommandContext context)
+        public Task SkipAsync(ICommandContext context)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].Skip();
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.Skip();
+
             return Task.CompletedTask;
         }
 
-        public Task EarRapeAsync(SocketCommandContext context)
+        public Task EarRapeAsync(ICommandContext context)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].EarRape();
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.EarRape();
+
             return Task.CompletedTask;
         }
 
-        public Task SetEarRapeAmountAsync(SocketCommandContext context, string paramsString)
+        public Task SetEarRapeAmountAsync(ICommandContext context, string paramsString)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].SetEarRapeAmount(paramsString);
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.SetEarRapeAmount(paramsString);
+
             return Task.CompletedTask;
         }
 
-        public Task SeekAsync(SocketCommandContext context, string position)
+        public Task SeekAsync(ICommandContext context, string position)
         {
-            if (IsInVoiceChannel(context))
-            {
-                var voiceChannelId = ((IGuildUser)context.User).VoiceChannel.Id;
-                Players[voiceChannelId].Seek(long.Parse(position));
-            }
+            var guild = GetGuildContext(context);
+            if (guild.IsUserInVoiceChannel()) guild.Player.Seek(long.Parse(position));
+
             return Task.CompletedTask;
         }
     }

@@ -7,16 +7,16 @@ namespace VictorBot.Services.Audio
         private readonly WaveStream sourceStream;
 
         private int byteMultiplier;
-        private int startBytes;
-        private int endBytes;
+        private int startPosition;
+        private int endPosition;
 
         public LoopStream(WaveStream waveStream, int start = 0, int end = 0)
         {
             sourceStream = waveStream;
             byteMultiplier = (WaveFormat.BitsPerSample / 8) * WaveFormat.Channels;
 
-            startBytes = start * byteMultiplier;
-            endBytes = end * byteMultiplier;
+            startPosition = start * byteMultiplier;
+            endPosition = end * byteMultiplier;
         }
 
         public bool Loop { get; set; } = false;
@@ -34,28 +34,24 @@ namespace VictorBot.Services.Audio
 
             while (totalBytesRead < count)
             {
-                if (advanced >= endBytes && Loop)
+                if (advanced >= endPosition && Loop)
                 {
-                    if (endBytes > startBytes)
+                    if (endPosition > startPosition)
                     {
-                        int byteDifference = (int)(endBytes - sourceStream.Position);
+                        int byteDifference = (int)(endPosition - sourceStream.Position);
 
-                        totalBytesRead += sourceStream.Read(buffer, offset, byteDifference);
-                        //Console.WriteLine("Byte difference: " + byteDifference + "\nBytes read: " + bytesRead);
-                        //Console.WriteLine("Ended at sample " + currentStream.Position / byteMultiplier);
-                        sourceStream.Position = startBytes;
-                        //Console.WriteLine("Restarted at sample " + currentStream.Position / byteMultiplier);
+                        if (byteDifference > 0) totalBytesRead += sourceStream.Read(buffer, offset, byteDifference);
+                        sourceStream.Position = startPosition;
                     }
                 }
 
-                int bytesRead;
-
-                bytesRead = sourceStream.Read(buffer, offset + totalBytesRead, count - totalBytesRead);
+                int bytesRead = sourceStream.Read(buffer, offset + totalBytesRead, count - totalBytesRead);
                 if (bytesRead == 0)
                 {
-                    if (Loop) Position = startBytes;
+                    if (Loop) Position = startPosition;
                     else break;
                 }
+
                 totalBytesRead += bytesRead;
             }
 
